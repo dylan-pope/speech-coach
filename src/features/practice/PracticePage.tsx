@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CircleAlert,
   LoaderCircle,
   Mic,
@@ -8,7 +10,7 @@ import {
   RotateCcw,
   Send,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AppFrame } from '../../components/layout/AppFrame'
 import { NeoButton } from '../../components/ui/NeoButton'
@@ -36,7 +38,35 @@ type UiStatus =
   | 'summary-ready'
   | 'error'
 
-const progressSteps = ['Prompt', 'Opening', 'Counterpoint', 'Summary']
+type StepKey = 'prompt' | 'opening' | 'feedback' | 'rebuttal' | 'summary'
+type StepMode = 'auto' | 'open' | 'closed'
+
+const progressSteps: { key: StepKey; label: string }[] = [
+  { key: 'prompt', label: 'Prompt' },
+  { key: 'opening', label: 'Opening' },
+  { key: 'feedback', label: 'Feedback' },
+  { key: 'rebuttal', label: 'Rebuttal' },
+  { key: 'summary', label: 'Summary' },
+]
+
+const collapsedHints: Record<StepKey, string> = {
+  prompt: 'Choose a debate prompt to unlock opening practice.',
+  opening: 'Opening statement step is collapsed.',
+  feedback: 'Feedback is collapsed. Expand to review coaching.',
+  rebuttal: 'Rebuttal unlocks after you finish feedback review.',
+  summary: 'Summary unlocks after rebuttal submission.',
+}
+
+const uiStatusLabels: Record<UiStatus, string> = {
+  idle: 'Waiting for prompt selection',
+  listening: 'Recording opening statement',
+  'transcript-ready': 'Opening transcript ready for analysis',
+  analyzing: 'Analyzing opening argument',
+  'feedback-ready': 'Feedback and counterpoints are ready',
+  'rebuttal-listening': 'Recording rebuttal',
+  'summary-ready': 'Session summary generated',
+  error: 'Action needed: review the error message',
+}
 
 function appendSegment(current: string, segment: string) {
   return current ? `${current} ${segment}`.trim() : segment.trim()
@@ -59,6 +89,48 @@ function createSessionId() {
     return crypto.randomUUID()
   }
   return `${Date.now()}-${Math.floor(Math.random() * 100_000)}`
+}
+
+function StepCard(props: {
+  accent: 'red' | 'blue' | 'orange' | 'teal' | 'lime' | 'steel' | 'none'
+  completed: boolean
+  expanded: boolean
+  canToggle: boolean
+  title: string
+  stepNumber: number
+  onToggle: () => void
+  collapsedHint: string
+  children: ReactNode
+}) {
+  return (
+    <NeoCard accent={props.accent} className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2">
+          <h2 className="text-xl uppercase">
+            {props.stepNumber}) {props.title}
+          </h2>
+          <StatusPill tone={props.completed ? 'success' : 'neutral'}>
+            {props.completed ? 'Completed' : 'In Progress'}
+          </StatusPill>
+        </div>
+        <button
+          aria-label={props.expanded ? `Collapse ${props.title}` : `Expand ${props.title}`}
+          className="inline-flex items-center gap-2 border-2 border-ink bg-paper px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={!props.canToggle}
+          onClick={props.onToggle}
+          type="button"
+        >
+          {props.expanded ? 'Collapse' : 'Expand'}
+          {props.expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+        </button>
+      </div>
+      {props.expanded ? (
+        props.children
+      ) : (
+        <p className="border-2 border-ink bg-paper p-3 text-sm">{props.collapsedHint}</p>
+      )}
+    </NeoCard>
+  )
 }
 
 export function PracticePage() {
@@ -86,6 +158,9 @@ export function PracticePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isSummarizing, setIsSummarizing] = useState(false)
+  const [promptConfirmed, setPromptConfirmed] = useState(false)
+  const [feedbackReviewed, setFeedbackReviewed] = useState(false)
+  const [stepModes, setStepModes] = useState<Partial<Record<StepKey, StepMode>>>({})
 
   const { sessions, upsertSession, updateReflection } = useLocalSessions()
 
@@ -112,6 +187,12 @@ export function PracticePage() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.preferredMode, APP_MODE)
   }, [])
+
+  useEffect(() => {
+    if (!promptConfirmed && (openingTranscript.trim() || openingFeedback || rebuttalTranscript.trim())) {
+      setPromptConfirmed(true)
+    }
+  }, [openingTranscript, openingFeedback, rebuttalTranscript, promptConfirmed])
 
   useEffect(() => {
     if (IS_DEMO_MODE) {
@@ -161,6 +242,56 @@ export function PracticePage() {
     }
   }, [rebuttalSpeech.error])
 
+  const stepCompletion: Record<StepKey, boolean> = {
+    prompt: promptConfirmed,
+    opening: Boolean(openingFeedback),
+    feedback: feedbackReviewed,
+    rebuttal: Boolean(summary),
+    summary: Boolean(summary),
+  }
+
+  const activeStep: StepKey = !stepCompletion.prompt
+    ? 'prompt'
+    : !stepCompletion.opening
+      ? 'opening'
+      : !stepCompletion.feedback
+        ? 'feedback'
+        : !stepCompletion.rebuttal
+          ? 'rebuttal'
+          : 'summary'
+
+  useEffect(() => {
+    setStepModes((current) => {
+      if (current[activeStep] !== 'closed') {
+        return current
+      }
+      return { ...current, [activeStep]: 'auto' }
+    })
+  }, [activeStep])
+
+  function isStepExpanded(stepKey: StepKey) {
+    const mode = stepModes[stepKey] ?? 'auto'
+    if (mode === 'open') {
+      return true
+    }
+    if (mode === 'closed') {
+      return false
+    }
+    return stepKey === activeStep
+  }
+
+  function canToggleStep(stepKey: StepKey) {
+    return stepCompletion[stepKey] || stepKey === activeStep
+  }
+
+  function toggleStep(stepKey: StepKey) {
+    const currentlyExpanded = isStepExpanded(stepKey)
+    setStepModes((current) => ({
+      ...current,
+      [stepKey]: currentlyExpanded ? 'closed' : 'open',
+    }))
+  }
+
   function clearRound() {
     setOpeningTranscript('')
     setRebuttalTranscript('')
@@ -172,6 +303,9 @@ export function PracticePage() {
     setSessionId(null)
     setErrorMessage(null)
     setUiStatus('idle')
+    setPromptConfirmed(false)
+    setFeedbackReviewed(false)
+    setStepModes({})
     openingSpeech.resetState()
     rebuttalSpeech.resetState()
   }
@@ -188,6 +322,7 @@ export function PracticePage() {
     setIsAnalyzing(true)
     setErrorMessage(null)
     setUiStatus('analyzing')
+    setFeedbackReviewed(false)
 
     try {
       const feedback = await analyzeTranscript({
@@ -293,13 +428,7 @@ export function PracticePage() {
     }
   }
 
-  const progressIndex = summary
-    ? 3
-    : openingFeedback && counterpoints.length > 0
-      ? 2
-      : openingTranscript.trim()
-        ? 1
-        : 0
+  const activeStepIndex = progressSteps.findIndex((step) => step.key === activeStep)
 
   return (
     <AppFrame className="space-y-5 md:space-y-7">
@@ -348,18 +477,21 @@ export function PracticePage() {
 
         <NeoCard accent="blue" className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.1em]">Round Progress</p>
+          <p className="border-2 border-ink bg-paper p-2 text-xs font-semibold uppercase">
+            Current status: {uiStatusLabels[uiStatus]}
+          </p>
           <div className="grid gap-2">
             {progressSteps.map((step, index) => {
-              const reached = index <= progressIndex
+              const reached = index < activeStepIndex || step.key === activeStep || stepCompletion[step.key]
               return (
                 <div
                   className="flex items-center gap-3 border-2 border-ink bg-paper px-3 py-2"
-                  key={step}
+                  key={step.key}
                 >
                   <span className="inline-flex size-7 items-center justify-center border-2 border-ink bg-card font-display text-xs">
                     {index + 1}
                   </span>
-                  <span className={reached ? 'font-semibold' : 'opacity-70'}>{step}</span>
+                  <span className={reached ? 'font-semibold' : 'opacity-70'}>{step.label}</span>
                   {reached && <CheckCircle2 className="ml-auto size-4" />}
                 </div>
               )
@@ -379,195 +511,244 @@ export function PracticePage() {
         </NeoCard>
       )}
 
-      <section className="grid items-start gap-5 lg:grid-cols-[1.1fr_1fr]">
-        <div className="space-y-5">
-          <NeoCard accent="orange" className="space-y-3">
-            <h2 className="text-xl uppercase">1) Pick a Prompt</h2>
-            <div className="grid gap-2">
-              {seededPrompts.map((prompt) => (
+      <section className="space-y-5">
+        <StepCard
+          accent="orange"
+          canToggle={canToggleStep('prompt')}
+          collapsedHint={collapsedHints.prompt}
+          completed={stepCompletion.prompt}
+          expanded={isStepExpanded('prompt')}
+          onToggle={() => toggleStep('prompt')}
+          stepNumber={1}
+          title="Pick a Prompt"
+        >
+          <div className="grid gap-2">
+            {seededPrompts.map((prompt) => (
+              <button
+                className={`border-3 p-3 text-left transition ${
+                  selectedPromptId === prompt.id
+                    ? 'border-ink bg-blue-debate text-ink shadow-neo-sm'
+                    : 'border-ink bg-paper hover:bg-orange-argument/45'
+                }`}
+                key={prompt.id}
+                onClick={() => {
+                  setSelectedPromptId(prompt.id)
+                  setPromptConfirmed(true)
+                  setErrorMessage(null)
+                }}
+                type="button"
+              >
+                <p className="font-semibold">{prompt.title}</p>
+                <p className="mt-1 text-sm">{prompt.body}</p>
+              </button>
+            ))}
+          </div>
+        </StepCard>
+
+        <StepCard
+          accent="teal"
+          canToggle={canToggleStep('opening')}
+          collapsedHint={collapsedHints.opening}
+          completed={stepCompletion.opening}
+          expanded={isStepExpanded('opening')}
+          onToggle={() => toggleStep('opening')}
+          stepNumber={2}
+          title="Opening Statement"
+        >
+          {!openingSpeech.supported && (
+            <p className="border-2 border-ink bg-orange-argument p-2 text-sm">
+              Speech recognition is unsupported in this browser. Continue with manual transcript
+              input.
+            </p>
+          )}
+          {openingSpeech.permissionDenied && (
+            <p className="border-2 border-ink bg-orange-argument p-2 text-sm">
+              Microphone permission denied. Manual input is active.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <NeoButton
+              disabled={!openingSpeech.supported || openingSpeech.listening}
+              onClick={() => openingSpeech.start()}
+            >
+              <Mic className="size-4" />
+              Start mic
+            </NeoButton>
+            <NeoButton
+              disabled={!openingSpeech.listening}
+              onClick={() => openingSpeech.stop()}
+              variant="danger"
+            >
+              <MicOff className="size-4" />
+              Stop mic
+            </NeoButton>
+          </div>
+          <p className="text-xs uppercase tracking-[0.12em]">
+            Status: <span className="font-semibold">{openingSpeech.listening ? 'Listening' : 'Idle'}</span>
+          </p>
+          {openingSpeech.interimTranscript && (
+            <p className="border-2 border-ink bg-lime p-2 text-sm">
+              Live transcript: {openingSpeech.interimTranscript}
+            </p>
+          )}
+          <textarea
+            className="min-h-44 w-full resize-y border-3 border-ink bg-paper p-3 shadow-neo-sm"
+            onChange={(event) => {
+              setOpeningTranscript(event.target.value)
+              if (!promptConfirmed) {
+                setPromptConfirmed(true)
+              }
+            }}
+            placeholder="Your opening transcript appears here. You can edit or paste text."
+            value={openingTranscript}
+          />
+          <NeoButton disabled={isAnalyzing} onClick={onAnalyzeOpening}>
+            {isAnalyzing ? (
+              <>
+                <LoaderCircle className="size-4 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Send className="size-4" />
+                Analyze opening + generate counterpoints
+              </>
+            )}
+          </NeoButton>
+        </StepCard>
+
+        <StepCard
+          accent="blue"
+          canToggle={canToggleStep('feedback')}
+          collapsedHint={collapsedHints.feedback}
+          completed={stepCompletion.feedback}
+          expanded={isStepExpanded('feedback')}
+          onToggle={() => toggleStep('feedback')}
+          stepNumber={3}
+          title="Coaching Feedback"
+        >
+          {!openingFeedback ? (
+            <p className="border-2 border-ink bg-paper p-3 text-sm">
+              Submit your opening transcript to receive structured coaching.
+            </p>
+          ) : (
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-3"
+              initial={{ opacity: 0, y: 8 }}
+            >
+              <p className="border-2 border-ink bg-paper p-3">{openingFeedback.summary}</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                {Object.entries(openingFeedback.rubric).map(([key, item]) => (
+                  <div className="border-2 border-ink bg-paper p-2 text-sm" key={key}>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="font-semibold capitalize">{key.replace(/([A-Z])/g, ' $1')}</p>
+                      <StatusPill tone={getRubricTone(item.level)}>{item.level}</StatusPill>
+                    </div>
+                    <p>{item.feedback}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="border-2 border-ink bg-lime p-2 text-sm font-semibold">
+                Coach question: {openingFeedback.coachQuestion}
+              </p>
+              <NeoButton
+                onClick={() => {
+                  setFeedbackReviewed(true)
+                  setErrorMessage(null)
+                }}
+                variant="secondary"
+              >
+                Continue to rebuttal
+              </NeoButton>
+            </motion.div>
+          )}
+        </StepCard>
+
+        <StepCard
+          accent="orange"
+          canToggle={canToggleStep('rebuttal')}
+          collapsedHint={collapsedHints.rebuttal}
+          completed={stepCompletion.rebuttal}
+          expanded={isStepExpanded('rebuttal')}
+          onToggle={() => toggleStep('rebuttal')}
+          stepNumber={4}
+          title="Rebuttal Drill"
+        >
+          {counterpoints.length === 0 ? (
+            <p className="border-2 border-ink bg-paper p-3 text-sm">
+              Counterpoints appear here after opening analysis.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {counterpoints.map((counterpoint) => (
                 <button
-                  className={`border-3 p-3 text-left transition ${
-                    selectedPromptId === prompt.id
-                      ? 'border-ink bg-blue-debate text-ink shadow-neo-sm'
-                      : 'border-ink bg-paper hover:bg-orange-argument/45'
+                  className={`w-full border-3 p-3 text-left ${
+                    selectedCounterpointId === counterpoint.id
+                      ? 'border-ink bg-orange-argument shadow-neo-sm'
+                      : 'border-ink bg-paper hover:bg-paper/60'
                   }`}
-                  key={prompt.id}
-                  onClick={() => setSelectedPromptId(prompt.id)}
+                  key={counterpoint.id}
+                  onClick={() => setSelectedCounterpointId(counterpoint.id)}
                   type="button"
                 >
-                  <p className="font-semibold">{prompt.title}</p>
-                  <p className="mt-1 text-sm">{prompt.body}</p>
+                  <p className="font-semibold">{counterpoint.title}</p>
+                  <p className="text-sm">{counterpoint.text}</p>
                 </button>
               ))}
             </div>
-          </NeoCard>
+          )}
 
-          <NeoCard accent="teal" className="space-y-3">
-            <h2 className="text-xl uppercase">2) Opening Statement</h2>
-            {!openingSpeech.supported && (
-              <p className="border-2 border-ink bg-orange-argument p-2 text-sm">
-                Speech recognition is unsupported in this browser. Continue with manual transcript
-                input.
-              </p>
-            )}
-            {openingSpeech.permissionDenied && (
-              <p className="border-2 border-ink bg-orange-argument p-2 text-sm">
-                Microphone permission denied. Manual input is active.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <NeoButton
-                disabled={!openingSpeech.supported || openingSpeech.listening}
-                onClick={() => openingSpeech.start()}
-              >
-                <Mic className="size-4" />
-                Start mic
-              </NeoButton>
-              <NeoButton
-                disabled={!openingSpeech.listening}
-                onClick={() => openingSpeech.stop()}
-                variant="danger"
-              >
-                <MicOff className="size-4" />
-                Stop mic
-              </NeoButton>
-            </div>
-            <p className="text-xs uppercase tracking-[0.12em]">
-              Status:{' '}
-              <span className="font-semibold">
-                {openingSpeech.listening ? 'Listening' : 'Idle'}
-              </span>
+          <div className="flex flex-wrap gap-2">
+            <NeoButton
+              disabled={!rebuttalSpeech.supported || rebuttalSpeech.listening}
+              onClick={() => rebuttalSpeech.start()}
+            >
+              <Mic className="size-4" />
+              Record rebuttal
+            </NeoButton>
+            <NeoButton
+              disabled={!rebuttalSpeech.listening}
+              onClick={() => rebuttalSpeech.stop()}
+              variant="danger"
+            >
+              <MicOff className="size-4" />
+              Stop rebuttal
+            </NeoButton>
+          </div>
+          {rebuttalSpeech.interimTranscript && (
+            <p className="border-2 border-ink bg-lime p-2 text-sm">
+              Live rebuttal: {rebuttalSpeech.interimTranscript}
             </p>
-            {openingSpeech.interimTranscript && (
-              <p className="border-2 border-ink bg-lime p-2 text-sm">
-                Live transcript: {openingSpeech.interimTranscript}
-              </p>
-            )}
-            <textarea
-              className="min-h-44 w-full resize-y border-3 border-ink bg-paper p-3 shadow-neo-sm"
-              onChange={(event) => setOpeningTranscript(event.target.value)}
-              placeholder="Your opening transcript appears here. You can edit or paste text."
-              value={openingTranscript}
-            />
-            <NeoButton disabled={isAnalyzing} onClick={onAnalyzeOpening}>
-              {isAnalyzing ? (
-                <>
-                  <LoaderCircle className="size-4 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <Send className="size-4" />
-                  Analyze opening + generate counterpoints
-                </>
-              )}
-            </NeoButton>
-          </NeoCard>
-        </div>
-
-        <div className="space-y-5">
-          <NeoCard accent="blue" className="space-y-4">
-            <h2 className="text-xl uppercase">3) Coaching Feedback</h2>
-            {!openingFeedback ? (
-              <p className="border-2 border-ink bg-paper p-3 text-sm">
-                Submit your opening transcript to receive structured coaching.
-              </p>
+          )}
+          <textarea
+            className="min-h-36 w-full resize-y border-3 border-ink bg-paper p-3 shadow-neo-sm"
+            onChange={(event) => setRebuttalTranscript(event.target.value)}
+            placeholder="Rebuttal transcript..."
+            value={rebuttalTranscript}
+          />
+          <NeoButton disabled={isSummarizing || !openingFeedback} onClick={onGenerateSummary}>
+            {isSummarizing ? (
+              <>
+                <LoaderCircle className="size-4 animate-spin" />
+                Generating summary...
+              </>
             ) : (
-              <motion.div
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-3"
-                initial={{ opacity: 0, y: 8 }}
-              >
-                <p className="border-2 border-ink bg-paper p-3">{openingFeedback.summary}</p>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {Object.entries(openingFeedback.rubric).map(([key, item]) => (
-                    <div className="border-2 border-ink bg-paper p-2 text-sm" key={key}>
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <p className="font-semibold capitalize">{key.replace(/([A-Z])/g, ' $1')}</p>
-                        <StatusPill tone={getRubricTone(item.level)}>{item.level}</StatusPill>
-                      </div>
-                      <p>{item.feedback}</p>
-                    </div>
-                  ))}
-                </div>
-                <p className="border-2 border-ink bg-lime p-2 text-sm font-semibold">
-                  Coach question: {openingFeedback.coachQuestion}
-                </p>
-              </motion.div>
+              'Generate final session summary'
             )}
-          </NeoCard>
+          </NeoButton>
+        </StepCard>
 
-          <NeoCard accent="orange" className="space-y-3">
-            <h2 className="text-xl uppercase">4) Rebuttal Drill</h2>
-            {counterpoints.length === 0 ? (
-              <p className="border-2 border-ink bg-paper p-3 text-sm">
-                Counterpoints appear here after opening analysis.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {counterpoints.map((counterpoint) => (
-                  <button
-                    className={`w-full border-3 p-3 text-left ${
-                      selectedCounterpointId === counterpoint.id
-                        ? 'border-ink bg-orange-argument shadow-neo-sm'
-                        : 'border-ink bg-paper hover:bg-paper/60'
-                    }`}
-                    key={counterpoint.id}
-                    onClick={() => setSelectedCounterpointId(counterpoint.id)}
-                    type="button"
-                  >
-                    <p className="font-semibold">{counterpoint.title}</p>
-                    <p className="text-sm">{counterpoint.text}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <NeoButton
-                disabled={!rebuttalSpeech.supported || rebuttalSpeech.listening}
-                onClick={() => rebuttalSpeech.start()}
-              >
-                <Mic className="size-4" />
-                Record rebuttal
-              </NeoButton>
-              <NeoButton
-                disabled={!rebuttalSpeech.listening}
-                onClick={() => rebuttalSpeech.stop()}
-                variant="danger"
-              >
-                <MicOff className="size-4" />
-                Stop rebuttal
-              </NeoButton>
-            </div>
-            {rebuttalSpeech.interimTranscript && (
-              <p className="border-2 border-ink bg-lime p-2 text-sm">
-                Live rebuttal: {rebuttalSpeech.interimTranscript}
-              </p>
-            )}
-            <textarea
-              className="min-h-36 w-full resize-y border-3 border-ink bg-paper p-3 shadow-neo-sm"
-              onChange={(event) => setRebuttalTranscript(event.target.value)}
-              placeholder="Rebuttal transcript..."
-              value={rebuttalTranscript}
-            />
-            <NeoButton disabled={isSummarizing || !openingFeedback} onClick={onGenerateSummary}>
-              {isSummarizing ? (
-                <>
-                  <LoaderCircle className="size-4 animate-spin" />
-                  Generating summary...
-                </>
-              ) : (
-                'Generate final session summary'
-              )}
-            </NeoButton>
-          </NeoCard>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <NeoCard accent="lime" className="space-y-3">
-          <h2 className="text-xl uppercase">5) Final Summary + Reflection</h2>
+        <StepCard
+          accent="lime"
+          canToggle={canToggleStep('summary')}
+          collapsedHint={collapsedHints.summary}
+          completed={stepCompletion.summary}
+          expanded={isStepExpanded('summary')}
+          onToggle={() => toggleStep('summary')}
+          stepNumber={5}
+          title="Final Summary + Reflection"
+        >
           {!summary ? (
             <p className="border-2 border-ink bg-paper p-3 text-sm">
               Complete the rebuttal drill to unlock your final coaching summary.
@@ -595,8 +776,10 @@ export function PracticePage() {
               )}
             </>
           )}
-        </NeoCard>
+        </StepCard>
+      </section>
 
+      <section>
         <NeoCard accent="steel" className="space-y-3">
           <h2 className="text-xl uppercase">Recent Sessions</h2>
           {sessions.length === 0 ? (
@@ -615,9 +798,6 @@ export function PracticePage() {
               ))}
             </ul>
           )}
-          <p className="border-2 border-ink bg-orange-argument p-2 text-xs uppercase">
-            Current status: {uiStatus}
-          </p>
         </NeoCard>
       </section>
     </AppFrame>
