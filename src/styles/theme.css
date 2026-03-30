@@ -1,0 +1,72 @@
+@theme {
+  --font-display: 'Archivo Black', Arial, sans-serif;
+  --font-body: 'Space Grotesk', Arial, sans-serif;
+
+  --color-ink: #111111;
+  --color-paper: #fff9f0;
+  --color-card: #ffffff;
+  --color-red-signal: #ad0000;
+  --color-blue-debate: #4285f4;
+  --color-orange-argument: #ffab40;
+  --color-teal-coach: #0097a7;
+  --color-lime: #eeff41;
+  --color-steel: #78909c;
+}
+
+@layer base {
+  :root {
+    font-family: var(--font-body);
+    color: var(--color-ink);
+    background-color: var(--color-paper);
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    background-color: var(--color-paper);
+    background-image:
+      linear-gradient(120deg, rgba(66, 133, 244, 0.11), rgba(255, 171, 64, 0.08) 45%, transparent 80%),
+      repeating-linear-gradient(
+        -45deg,
+        rgba(17, 17, 17, 0.06) 0,
+        rgba(17, 17, 17, 0.06) 1px,
+        transparent 1px,
+        transparent 12px
+      );
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  *:focus-visible {
+    outline: 3px solid var(--color-blue-debate);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .border-3 {
+    border-width: 3px;
+  }
+
+  .shadow-neo {
+    box-shadow: 8px 8px 0 var(--color-ink);
+  }
+
+  .shadow-neo-sm {
+    box-shadow: 4px 4px 0 var(--color-ink);
+  }
+}
