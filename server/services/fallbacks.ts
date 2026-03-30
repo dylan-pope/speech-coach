@@ -38,6 +38,38 @@ export function fallbackAnalyze(payload: AnalyzeRequest): AnalyzeResponse {
   }
 }
 
+export function fallbackAnalyzeLowSignal(payload: AnalyzeRequest): AnalyzeResponse {
+  return {
+    summary:
+      `Based on your response, there is not enough argument content in this ${payload.mode} transcript yet to give reliable coaching.`,
+    rubric: {
+      claimClarity: {
+        level: 'emerging',
+        feedback: 'Your claim is not clearly stated yet.',
+      },
+      reasoning: {
+        level: 'emerging',
+        feedback: 'Add one reason that explains why your claim should be accepted.',
+      },
+      evidence: {
+        level: 'emerging',
+        feedback: 'Include one concrete example, comparison, or fact.',
+      },
+      organization: {
+        level: 'developing',
+        feedback: 'Use a simple structure: claim, reason, example, close.',
+      },
+    },
+    strengths: ['You submitted a practice attempt', 'You can revise and retry immediately'],
+    improvements: [
+      'Write one clear claim sentence',
+      'Add one reason using "because"',
+      'Add one specific example',
+    ],
+    coachQuestion: 'What is your exact one-sentence claim on this prompt?',
+  }
+}
+
 export function fallbackCounterpoint(payload: CounterpointRequest): CounterpointResponse {
   return {
     counterpoints: [

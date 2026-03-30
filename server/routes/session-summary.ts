@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { fallbackSessionSummary } from '../services/fallbacks'
 import { generateStructuredWithFallback } from '../services/ollama'
 import { buildSessionSummaryPrompts } from '../services/prompts'
+import { sessionSummaryFormatSchema } from '../services/response-format'
 import {
   sessionSummaryRequestSchema,
   sessionSummaryResponseSchema,
@@ -22,6 +23,9 @@ sessionSummaryRouter.post('/session-summary', async (request, response) => {
     schema: sessionSummaryResponseSchema,
     prompts: buildSessionSummaryPrompts(body.data),
     fallback: () => fallbackSessionSummary(body.data),
+    endpoint: 'session-summary',
+    formatSchema: sessionSummaryFormatSchema,
+    requestPayload: body.data,
   })
 
   if (result.warning) {

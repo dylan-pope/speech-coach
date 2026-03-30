@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { fallbackCounterpoint } from '../services/fallbacks'
 import { generateStructuredWithFallback } from '../services/ollama'
 import { buildCounterpointPrompts } from '../services/prompts'
+import { counterpointFormatSchema } from '../services/response-format'
 import { counterpointRequestSchema, counterpointResponseSchema } from '../services/schemas'
 
 const counterpointRouter = Router()
@@ -19,6 +20,9 @@ counterpointRouter.post('/counterpoint', async (request, response) => {
     schema: counterpointResponseSchema,
     prompts: buildCounterpointPrompts(body.data),
     fallback: () => fallbackCounterpoint(body.data),
+    endpoint: 'counterpoint',
+    formatSchema: counterpointFormatSchema,
+    requestPayload: body.data,
   })
 
   if (result.warning) {

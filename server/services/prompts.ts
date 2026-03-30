@@ -14,7 +14,12 @@ Give specific, constructive, age-appropriate feedback.
 Do not evaluate delivery, pacing, filler words, pronunciation, or confidence.
 Avoid grades, certainty language, and punitive tone.
 Use concise coaching language like "based on your response" and "you could strengthen this by..."
+Never infer or invent a stance from the prompt title or instructions.
+If the transcript is unclear, too short, repetitive, or non-argument text, explicitly say there is not enough argument content yet.
+When content is low-signal, avoid topic-specific assumptions and give rewrite guidance only.
 Return valid JSON only.
+Output must be a single JSON object, not a quoted JSON string.
+Do not wrap output in markdown or code fences.
     `.trim(),
     userPrompt: `
 Practice mode: ${payload.mode}
@@ -22,6 +27,12 @@ Prompt title: ${payload.promptTitle}
 Prompt instructions: ${payload.promptBody}
 Student transcript:
 ${payload.transcript}
+
+Important rules:
+- Evaluate only what appears in the transcript text.
+- Do not claim the student supports or opposes a side unless the transcript explicitly says so.
+- If there is insufficient argument content, keep all rubric levels at developing/emerging and provide a rewrite-oriented coach question.
+- Return one JSON object only. No prose outside JSON.
 
 Return strict JSON in this structure:
 {
@@ -48,11 +59,15 @@ Generate 2 concise, fair, age-appropriate counterpoints.
 Challenge the student's claim and reasoning, not the student personally.
 Avoid sarcasm, insults, or certainty language.
 Return valid JSON only.
+Output must be a single JSON object, not a quoted JSON string.
+Do not wrap output in markdown or code fences.
     `.trim(),
     userPrompt: `
 Prompt title: ${payload.promptTitle}
 Student transcript:
 ${payload.transcript}
+
+Return one JSON object only. No prose outside JSON.
 
 Return strict JSON in this structure:
 {
@@ -73,6 +88,8 @@ Compare opening and rebuttal content.
 Highlight one improvement, one remaining gap, and one next practice action.
 Do not grade and do not use certainty language.
 Return valid JSON only.
+Output must be a single JSON object, not a quoted JSON string.
+Do not wrap output in markdown or code fences.
     `.trim(),
     userPrompt: `
 Prompt title: ${payload.promptTitle}
@@ -84,6 +101,8 @@ ${payload.selectedCounterpoint}
 
 Rebuttal transcript:
 ${payload.rebuttalTranscript}
+
+Return one JSON object only. No prose outside JSON.
 
 Return strict JSON in this structure:
 {

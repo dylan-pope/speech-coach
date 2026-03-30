@@ -65,6 +65,14 @@ Copy `.env.example` to `.env` if you need overrides.
 - `OLLAMA_URL` Ollama chat endpoint (default `http://localhost:11434/api/chat`)
 - `OLLAMA_MODEL` model name (default `llama3.2`, fallback option `llama3.2:1b`)
 
+## AI Debug Logs
+
+When the local API calls Ollama, request/response debug logs are written to:
+
+- `server/logs/ollama-output.jsonl`
+
+Each line includes timestamp, endpoint, attempt number, raw model content, parse result type, request payload, and fallback warnings/errors.
+
 ## Routes
 
 - `/` landing page
